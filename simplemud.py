@@ -22,6 +22,10 @@ author: Mark Frimston - mfrimston@gmail.com
 """
 
 import time
+import items
+from colorama import init
+init()
+from colorama import Fore, Back, Style
 
 # import the MUD server class
 from mudserver import MudServer
@@ -31,11 +35,21 @@ from mudserver import MudServer
 rooms = {
     "Tavern": {
         "description": "You're in a cozy tavern warmed by an open fire.",
-        "exits": {"outside": "Outside"},
+        "exits": {"outside": "Outside a tavern"},
+        "items":["Mug"],
+        "npcs":[{"name":"Bartender","health":5,"idle":"washing a glass."}]
     },
-    "Outside": {
+    "Outside a tavern": {
         "description": "You're standing outside a tavern. It's raining.",
-        "exits": {"inside": "Tavern"},
+        "exits": {"inside": "Tavern","north": "Path"},
+        "items": [],
+        "npcs":[]
+    },
+    "Path": {
+        "description": "A muddy pathway surrounded on each side by dense forest",
+        "exits": {"south": "Outside a tavern"},
+        "items":[],
+        "npcs":[{"name":"Goblin","health":5,"idle":"scurrying about nervously."}]
     }
 }
 
@@ -67,6 +81,11 @@ while True:
         players[id] = {
             "name": None,
             "room": None,
+            "inventory":[],
+            "hp": 0,
+            "maxhp": 0,
+            "mp": 0,
+            "maxmp": 0
         }
 
         # send the new player a prompt for their name
@@ -92,7 +111,6 @@ while True:
 
     # go through any new commands sent from players
     for id, command, params in mud.get_commands():
-
         # if for any reason the player isn't in the player map, skip them and
         # move on to the next one
         if id not in players:
@@ -101,10 +119,14 @@ while True:
         # if the player hasn't given their name yet, use this first command as
         # their name and move them to the starting room.
         if players[id]["name"] is None:
-
             players[id]["name"] = command
             players[id]["room"] = "Tavern"
-
+            players[id]["inventory"].append("Backpack")
+            players[id]["inventory"].append("Sword")
+            players[id]["hp"]=10
+            players[id]["maxhp"]=10
+            players[id]["mp"]=10
+            players[id]["maxmp"]=10
             # go through all the players in the game
             for pid, pl in players.items():
                 # send each player a message to tell them about the new player
@@ -135,15 +157,32 @@ while True:
                                  + "specified, e.g. 'go outside'")
 
         # 'say' command
-        elif command == "say":
-
+        elif command == "say" or command == "s":
             # go through every player in the game
             for pid, pl in players.items():
                 # if they're in the same room as the player
                 if players[pid]["room"] == players[id]["room"]:
                     # send them a message telling them what the player said
                     mud.send_message(pid, "{} says: {}".format(
-                                                players[id]["name"], params))
+                        players[id]["name"], params))
+        #emote command
+        elif command == "em" or command == "emote":
+            # go through every player in the game
+            for pid, pl in players.items():
+                # if they're in the same room as the player
+                if players[pid]["room"] == players[id]["room"]:
+                    # send them a message telling them what the player said
+                    mud.send_message(pid, "{} {}".format(
+                        players[id]["name"], params))
+        #'shout' command
+        elif command == "shout":
+            # go through every player in the game
+            for pid, pl in players.items():
+                # if they're in the same room as the player
+                if players[pid]["room"] == players[id]["room"]:
+                    # send them a message telling them what the player said
+                    mud.send_message(pid, "{} shouts: {}".format(
+                        players[id]["name"], params))
 
         # 'look' command
         elif command == "look":
@@ -153,6 +192,9 @@ while True:
 
             # send the player back the description of their current room
             mud.send_message(id, rm["description"])
+
+            for x in rm["npcs"]:
+                mud.send_message(id,"A {} is here, {}".format(x["name"],x["idle"]))
 
             playershere = []
             # go through every player in the game
@@ -164,9 +206,13 @@ while True:
                         # add their name to the list
                         playershere.append(players[pid]["name"])
 
+
             # send player a message containing the list of players in the room
             mud.send_message(id, "Players here: {}".format(
                                                     ", ".join(playershere)))
+
+            mud.send_message(id, "Items Here: {}".format(", ".join(rm["items"])))
+
 
             # send player a message containing the list of exits from this room
             mud.send_message(id, "Exits are: {}".format(
@@ -215,12 +261,75 @@ while True:
                 mud.send_message(id, "You arrive at '{}'".format(
                                                           players[id]["room"]))
 
+                # store the player's current room
+                rm = rooms[players[id]["room"]]
+
+                # send the player back the description of their current room
+                mud.send_message(id, rm["description"])
+
+                for x in rm["npcs"]:
+                    mud.send_message(id,"A {} is here, {}".format(x["name"],x["idle"]))
+
+                playershere = []
+                # go through every player in the game
+                for pid, pl in players.items():
+                    # if they're in the same room as the player
+                    if players[pid]["room"] == players[id]["room"]:
+                        # ... and they have a name to be shown
+                        if players[pid]["name"] is not None:
+                            # add their name to the list
+                            playershere.append(players[pid]["name"])
+
+
+                # send player a message containing the list of players in the room
+                mud.send_message(id, "Players here: {}".format(
+                                                        ", ".join(playershere)))
+
+                mud.send_message(id, "Items Here: {}".format(", ".join(rm["items"])))
+
+
+                # send player a message containing the list of exits from this room
+                mud.send_message(id, "Exits are: {}".format(
+                                                        ", ".join(rm["exits"])))
+
             # the specified exit wasn't found in the current room
             else:
                 # send back an 'unknown exit' message
                 mud.send_message(id, "Unknown exit '{}'".format(ex))
+        #show inventory
+        elif command == "inventory":
+            mud.send_message(id,"You are carrying:")
+            for x in players[id]["inventory"]:
+                mud.send_message(id, x)
+        #drop items
+        elif command == "drop":
+            if params in players[id]["inventory"]:
+                rooms[players[id]["room"]]["items"].append(params)
+                players[id]["inventory"].remove(params)
+                mud.send_message(id, "You dropped " + params)
+            else:
+                mud.send_message(id, "You are not carrying any " + params)
 
-        # some other, unrecognised command
+        #take items
+        elif command == "take":
+            for x in rooms[players[id]["room"]]["items"]:
+                if params.lower() == x.lower():
+                    rooms[players[id]["room"]]["items"].remove(x)
+                    players[id]["inventory"].append(x)
+                    mud.send_message(id, "You picked up " + x)
+                else:
+                    mud.send_message(id, "There are no " + params + " here.")
+
+        #COMBAT!
+        elif command == "hit":
+            for x in rooms[players[id]["room"]]["npcs"]:
+                if params.lower() == x["name"].lower():
+                    mud.send_message(id, "You hit " + x["name"] + "!")
+                else:
+                    mud.send_message(id, "There is no " + params +" here.")
+            # some other, unrecognised command
         else:
             # send back an 'unknown command' message
             mud.send_message(id, "Unknown command '{}'".format(command))
+
+        mud.send_message(id, Back.RED + str(players[id]['hp']) + "/" + str(players[id]['maxhp']) + Back.BLUE + str(players[id]['mp']) + "/" + str(players[id]['maxmp']) + Style.RESET_ALL)
